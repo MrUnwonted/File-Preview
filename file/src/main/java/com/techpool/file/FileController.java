@@ -1,15 +1,24 @@
 package com.techpool.file;
 
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 
 @RestController
 @RequestMapping("/api/files")
 public class FileController {
+    private static final Logger log = LoggerFactory.getLogger(FileController.class);
     private final FileStorageService fileStorageService;
     private final PreviewService previewService;
     private final ThumbnailService thumbnailService;
@@ -28,20 +37,60 @@ public class FileController {
         return ResponseEntity.ok(new FileUploadResponse(storedFileName));
     }
 
+    // @GetMapping("/health")
+    // public ResponseEntity<String> healthCheck() {
+    //     boolean storageOk = Files.exists(fileStorageLocation) &&
+    //             Files.isWritable(fileStorageLocation);
+
+    //     if (!storageOk) {
+    //         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+    //                 .body("File storage not available");
+    //     }
+    //     return ResponseEntity.ok("OK");
+    // }
+
     @GetMapping("/preview/{fileName}")
     public ResponseEntity<byte[]> getPreview(@PathVariable String fileName) {
-        byte[] preview = previewService.generatePreview(fileName);
-        return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
-                .body(preview);
+        try {
+            // Check if preview exists first
+            Path previewPath = Paths.get("./file-storage/previews/preview_" + fileName + ".png");
+            if (Files.exists(previewPath)) {
+                return ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_PNG)
+                        .body(Files.readAllBytes(previewPath));
+            }
+
+            // Generate new preview
+            byte[] preview = previewService.generatePreview(fileName);
+
+            // Store the preview
+            fileStorageService.storePreview(preview, fileName);
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_PNG)
+                    .body(preview);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get preview", e);
+        }
     }
 
     @GetMapping("/thumbnail/{fileName}")
     public ResponseEntity<byte[]> getThumbnail(@PathVariable String fileName) {
-        byte[] thumbnail = thumbnailService.generateThumbnail(fileName, 200, 200);
-        return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
-                .body(thumbnail);
+        try {
+            // First check if file exists
+            Resource resource = fileStorageService.loadFileAsResource(fileName);
+            if (!resource.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            byte[] thumbnail = thumbnailService.generateThumbnail(fileName, 200, 200);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_PNG)
+                    .body(thumbnail);
+        } catch (Exception e) {
+            log.error("Thumbnail generation failed for: {}", fileName, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     @GetMapping("/download/{fileName}")
