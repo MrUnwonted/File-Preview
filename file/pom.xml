@@ -54,6 +54,11 @@
 			<version>5.2.3</version>
 			<!-- Required for handling legacy Excel formats (XLS) -->
 		</dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>5.2.3</version>
+		</dependency>
 		<!-- Apache Tika for MIME type detection -->
 		<dependency>
 			<groupId>org.apache.tika</groupId>

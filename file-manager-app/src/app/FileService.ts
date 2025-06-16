@@ -1,12 +1,13 @@
 import { HttpClient } from "@angular/common/http";
 import { Injectable } from "@angular/core";
 import { Observable } from "rxjs";
+import { environment } from "../environment";
 
 @Injectable({
     providedIn: 'root'
 })
 export class FileService {
-    private apiUrl = '/api/files';
+    private apiUrl = `${environment.apiUrl}/api/files`;
 
     constructor(private http: HttpClient) { }
 
@@ -27,4 +28,12 @@ export class FileService {
             responseType: 'blob'
         });
     }
+
+    //     Upload files to /api/files/upload
+
+    // Get previews from /api/files/preview/{filename}
+
+    // Get thumbnails from /api/files/thumbnail/{filename}
+
+    // Download files from /api/files/download/{filename}
 }

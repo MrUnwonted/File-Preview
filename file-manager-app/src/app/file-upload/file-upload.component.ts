@@ -29,14 +29,20 @@ export class FileUploadComponent {
     const formData = new FormData();
     formData.append('file', this.selectedFile);
 
+    console.log('Uploading file to:', this.fileService['apiUrl']); // Check the URL
+
     this.fileService.uploadFile(formData).subscribe({
       next: (response) => {
+        console.log('Upload successful:', response);
         this.storedFileName = response.fileName;
         this.uploadComplete = true;
-        this.fileUploaded.emit(response.fileName); // Emit the filename
+        this.fileUploaded.emit(response.fileName);
       },
-      error: (err) => console.error('Upload failed', err)
+      error: (err) => {
+        console.error('Upload failed:', err);
+        console.error('Full error:', err.error);
+      }
     });
   }
-
+  
 }

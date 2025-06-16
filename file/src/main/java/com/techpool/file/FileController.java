@@ -1,24 +1,26 @@
 package com.techpool.file;
 
-import java.net.http.HttpHeaders;
-
-import org.apache.tomcat.util.http.parser.MediaType;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import jakarta.annotation.Resource;
+import org.springframework.core.io.Resource;
 
 @RestController
 @RequestMapping("/api/files")
 public class FileController {
     private final FileStorageService fileStorageService;
     private final PreviewService previewService;
+    private final ThumbnailService thumbnailService;
+
+    public FileController(FileStorageService fileStorageService,
+            PreviewService previewService,
+            ThumbnailService thumbnailService) {
+        this.fileStorageService = fileStorageService;
+        this.previewService = previewService;
+        this.thumbnailService = thumbnailService;
+    }
 
     @PostMapping("/upload")
     public ResponseEntity<FileUploadResponse> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -46,7 +48,7 @@ public class FileController {
     public ResponseEntity<Resource> downloadFile(@PathVariable String fileName) {
         Resource resource = fileStorageService.loadFileAsResource(fileName);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
                 .body(resource);
     }
 }

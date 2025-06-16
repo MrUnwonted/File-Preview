@@ -7,20 +7,20 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
-
-import org.apache.tomcat.util.file.ConfigurationSource.Resource;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import io.micrometer.common.util.StringUtils;
 import jakarta.annotation.PostConstruct;
+
+import org.springframework.util.StringUtils;
 
 @Service
 public class FileStorageService {
-    private final Path fileStorageLocation;
-    private final Path previewStorageLocation;
+    private Path fileStorageLocation;
+    private Path previewStorageLocation;
 
     @Value("${file.storage-dir}")
     private String storageDir;
