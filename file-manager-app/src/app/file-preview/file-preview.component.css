@@ -1,0 +1,23 @@
+.file-preview-container {
+  margin-top: 20px;
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.preview-image {
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.preview-image.thumbnail {
+  max-width: 200px;
+}
+
+.preview-image.full-preview {
+  max-width: 800px;
+}
+
+.preview-actions {
+  margin-top: 10px;
+}

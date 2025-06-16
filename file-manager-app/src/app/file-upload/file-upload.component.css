@@ -1,0 +1,10 @@
+.file-upload-container {
+  margin: 20px 0;
+  padding: 15px;
+  border: 1px dashed #ccc;
+  border-radius: 5px;
+}
+
+.file-upload-container input[type="file"] {
+  margin-bottom: 10px;
+}

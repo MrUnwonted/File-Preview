@@ -1,0 +1,11 @@
+<div class="file-preview-container">
+  <img [src]="previewUrl" (click)="togglePreview()" class="preview-image"
+    [ngClass]="{'thumbnail': !showFullPreview, 'full-preview': showFullPreview}">
+
+  <div class="preview-actions">
+    <button (click)="togglePreview()">
+      {{ showFullPreview ? 'Show Thumbnail' : 'Show Full Preview' }}
+    </button>
+    <button (click)="download()">Download</button>
+  </div>
+</div>
