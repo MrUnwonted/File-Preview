@@ -1,11 +1,12 @@
 // Add Output emitter to share the uploaded filename
 import { Component, EventEmitter, Output } from '@angular/core';
 import { FileService } from '../FileService';
+import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-file-upload',
   standalone: true,
-  imports: [],
+  imports: [CommonModule],
   templateUrl: './file-upload.component.html',
   styleUrl: './file-upload.component.css'
 })
@@ -14,6 +15,7 @@ export class FileUploadComponent {
   selectedFile: File | null = null;
   uploadProgress = 0;
   uploadComplete = false;
+  uploadError = false;
   storedFileName: string | null = null;
 
   constructor(private fileService: FileService) { }
@@ -41,6 +43,7 @@ export class FileUploadComponent {
       error: (err) => {
         console.error('Upload failed:', err);
         console.error('Full error:', err.error);
+        this.uploadError=true
       }
     });
   }

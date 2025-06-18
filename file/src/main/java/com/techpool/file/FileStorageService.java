@@ -99,4 +99,8 @@ public class FileStorageService {
         Files.write(targetLocation, previewBytes);
         return previewFileName;
     }
+
+    public Path getPreviewStorageLocation() {
+        return this.previewStorageLocation;
+    }
 }

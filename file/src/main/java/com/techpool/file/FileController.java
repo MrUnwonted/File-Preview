@@ -39,21 +39,21 @@ public class FileController {
 
     // @GetMapping("/health")
     // public ResponseEntity<String> healthCheck() {
-    //     boolean storageOk = Files.exists(fileStorageLocation) &&
-    //             Files.isWritable(fileStorageLocation);
+    // boolean storageOk = Files.exists(fileStorageLocation) &&
+    // Files.isWritable(fileStorageLocation);
 
-    //     if (!storageOk) {
-    //         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-    //                 .body("File storage not available");
-    //     }
-    //     return ResponseEntity.ok("OK");
+    // if (!storageOk) {
+    // return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+    // .body("File storage not available");
+    // }
+    // return ResponseEntity.ok("OK");
     // }
 
     @GetMapping("/preview/{fileName}")
     public ResponseEntity<byte[]> getPreview(@PathVariable String fileName) {
         try {
             // Check if preview exists first
-            Path previewPath = Paths.get("./file-storage/previews/preview_" + fileName + ".png");
+            Path previewPath = fileStorageService.getPreviewStorageLocation().resolve("preview_" + fileName + ".png");
             if (Files.exists(previewPath)) {
                 return ResponseEntity.ok()
                         .contentType(MediaType.IMAGE_PNG)
@@ -61,7 +61,13 @@ public class FileController {
             }
 
             // Generate new preview
-            byte[] preview = previewService.generatePreview(fileName);
+            byte[] preview;
+            try {
+                preview = previewService.generatePreview(fileName);
+            } catch (Exception e) {
+                log.error("Preview generation failed for file: {}", fileName, e);
+                preview = previewService.generateErrorPreview("Preview unavailable");
+            }
 
             // Store the preview
             fileStorageService.storePreview(preview, fileName);
@@ -70,7 +76,8 @@ public class FileController {
                     .contentType(MediaType.IMAGE_PNG)
                     .body(preview);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to get preview", e);
+            log.error("Failed to process preview request for file: {}", fileName, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
