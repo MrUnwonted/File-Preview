@@ -26,9 +26,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ArrayList;
 import org.apache.poi.xwpf.usermodel.XWPFPictureData;
+import org.apache.commons.io.FileUtils;
+import java.nio.file.*;
 
 @Service
 public class PreviewService {
@@ -37,9 +40,8 @@ public class PreviewService {
     private final ThumbnailService thumbnailService;
     @Value("${libreoffice.path}")
     private String libreOfficePath;
-
-    @Value("${libreoffice.timeout:30000}")
-    private long libreOfficeTimeout;
+    @Value("${libreoffice.timeout:120000}") // Default 2 minutes
+    private long libreOfficeTimeout; // Changed to primitive long
 
     public PreviewService(FileStorageService fileStorageService, ThumbnailService thumbnailService) {
         this.fileStorageService = fileStorageService;
@@ -132,54 +134,51 @@ public class PreviewService {
         }
     }
 
-    private byte[] generateWordPreviewWithLibreOffice(File file) throws Exception {
-        // Create temp directory with proper permissions
+    public byte[] generateWordPreviewWithLibreOffice(File file) throws Exception {
         Path tempDir = Files.createTempDirectory("lo-preview-");
         try {
-            // Explicit path to soffice binary (adjust for your OS)
-            String sofficeCommand = "C:\\Program Files\\LibreOffice\\program\\soffice.exe"; // Windows
-            // String sofficeCommand = "/usr/bin/soffice"; // Linux
+            String sofficePath = getLibreOfficePath();
+            log.info("Attempting conversion with LibreOffice at: {}", sofficePath);
 
-            // Build the conversion command with debug options
             ProcessBuilder pb = new ProcessBuilder(
-                    sofficeCommand,
+                    sofficePath,
                     "--headless",
                     "--convert-to", "png",
                     "--outdir", tempDir.toString(),
                     file.getAbsolutePath());
 
-            // Redirect output for debugging
+            // Redirect all output to log file
+            File logFile = tempDir.resolve("conversion.log").toFile();
             pb.redirectErrorStream(true);
-            File logFile = new File("libreoffice-conversion.log");
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
 
-            // Start process with timeout
             Process process = pb.start();
-            boolean finished = process.waitFor(120, TimeUnit.SECONDS);
+            boolean success = process.waitFor(2, TimeUnit.MINUTES);
 
-            if (!finished) {
+            // Read the log file regardless of success
+            String logContent = Files.readString(logFile.toPath());
+            log.info("LibreOffice conversion log:\n{}", logContent);
+
+            if (!success) {
                 process.destroyForcibly();
-                throw new IOException("LibreOffice conversion timed out after 2 minutes");
+                throw new IOException("Conversion timed out after 2 minutes");
             }
 
             if (process.exitValue() != 0) {
-                // Read the log file for error details
-                String errorOutput = Files.readString(logFile.toPath());
-                throw new IOException("LibreOffice failed (exit code " +
-                        process.exitValue() + "): " + errorOutput);
+                throw new IOException("LibreOffice failed with exit code " +
+                        process.exitValue() + "\nLogs:\n" + logContent);
             }
 
             // Find the generated PNG
             try (Stream<Path> files = Files.list(tempDir)) {
                 Optional<Path> pngFile = files
-                        .filter(p -> p.toString().endsWith(".png"))
+                        .filter(p -> p.toString().toLowerCase().endsWith(".png"))
                         .findFirst();
 
                 if (pngFile.isEmpty()) {
-                    throw new IOException("No PNG file generated in " + tempDir);
+                    throw new IOException("No PNG file generated. Logs:\n" + logContent);
                 }
 
-                // Process the image
                 BufferedImage image = ImageIO.read(pngFile.get().toFile());
                 if (image == null) {
                     throw new IOException("Generated PNG is invalid");
@@ -188,8 +187,10 @@ public class PreviewService {
                 return thumbnailService.convertToByteArray(
                         thumbnailService.resizeImage(image, 800, 800));
             }
+        } catch (Exception e) {
+            log.error("LibreOffice conversion failed", e);
+            throw e;
         } finally {
-            // Clean up temp directory
             try {
                 FileUtils.deleteDirectory(tempDir.toFile());
             } catch (IOException e) {
@@ -198,8 +199,8 @@ public class PreviewService {
         }
     }
 
+    // Enhanced image processing
     private BufferedImage enhanceImageQuality(BufferedImage original) {
-        // Create a new image with better contrast and sharpness
         BufferedImage enhanced = new BufferedImage(
                 original.getWidth(),
                 original.getHeight(),
@@ -207,7 +208,7 @@ public class PreviewService {
 
         Graphics2D g = enhanced.createGraphics();
         try {
-            // Apply rendering hints for better quality
+            // High-quality rendering
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                     RenderingHints.VALUE_INTERPOLATION_BICUBIC);
             g.setRenderingHint(RenderingHints.KEY_RENDERING,
@@ -215,39 +216,25 @@ public class PreviewService {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
 
-            // Draw original image with enhanced settings
-            g.drawImage(original, 0, 0, null);
-
-            // Apply additional sharpening
+            // Contrast adjustment
             RescaleOp rescaleOp = new RescaleOp(1.2f, 15, null);
-            rescaleOp.filter(enhanced, enhanced);
+            g.drawImage(original, rescaleOp, 0, 0);
         } finally {
             g.dispose();
         }
-
         return enhanced;
     }
 
-    private String getLibreOfficeCommand() {
-        String os = System.getProperty("os.name").toLowerCase();
+    // Helper: Detect LibreOffice path based on OS
+    private String getLibreOfficePath() throws IOException {
+        String customPath = "C:\\LibreOfficePortable\\App\\LibreOffice\\program\\soffice.exe";
+        File loFile = new File(customPath);
 
-        if (os.contains("win")) {
-            // Check common Windows installation paths
-            String[] possiblePaths = {
-                    "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-                    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe"
-            };
-
-            for (String path : possiblePaths) {
-                File sofficeFile = new File(path);
-                if (sofficeFile.exists()) {
-                    return path;
-                }
-            }
+        if (!loFile.exists()) {
+            throw new IOException("LibreOffice not found at: " + customPath +
+                    "\nPlease verify installation path or install LibreOffice Portable");
         }
-
-        // Default to just 'soffice' (should be in PATH)
-        return "soffice";
+        return customPath;
     }
 
     private byte[] generateWordPreviewWithPoi(File file) throws IOException {
