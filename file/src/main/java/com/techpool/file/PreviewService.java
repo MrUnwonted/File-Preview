@@ -3,6 +3,8 @@ package com.techpool.file;
 // import org.docx4j.convert.out.pdf.PdfSettings;
 import java.io.*;
 import java.awt.*;
+import java.awt.Color;
+import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.awt.image.RescaleOp;
 
@@ -12,9 +14,11 @@ import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
-import org.apache.poi.xwpf.usermodel.XWPFPicture;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.commons.io.FileUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -30,8 +34,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.ArrayList;
 import org.apache.poi.xwpf.usermodel.XWPFPictureData;
-import org.apache.commons.io.FileUtils;
 import java.nio.file.*;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 
 @Service
 public class PreviewService {
@@ -64,6 +71,12 @@ public class PreviewService {
                 return generatePdfPreview(file);
             } else if (mimeType.contains("word") || mimeType.contains("officedocument.wordprocessingml")) {
                 return generateWordPreview(file);
+            } else if (mimeType.contains("excel") || mimeType.contains("spreadsheetml")) {
+                return generateExcelPreview(file);
+            } else if (mimeType.equals("text/csv") || mimeType.equals("application/csv")) {
+                return generateCsvPreview(file);
+            } else if (mimeType.equals("application/xml") || mimeType.equals("text/xml")) {
+                return generateXmlPreview(file);
             } else {
                 return generateGenericPreview(file, mimeType);
             }
@@ -114,8 +127,6 @@ public class PreviewService {
 
     private byte[] generateWordPreview(File file) {
         try {
-            // First try with docx4j
-            // return generateWordPreviewWithDocx4j(file);
             return generateWordPreviewWithLibreOffice(file);
         } catch (Exception e) {
             // log.warn("Docx4j conversion failed, falling back to text preview", e);
@@ -199,30 +210,222 @@ public class PreviewService {
         }
     }
 
-    // Enhanced image processing
-    private BufferedImage enhanceImageQuality(BufferedImage original) {
-        BufferedImage enhanced = new BufferedImage(
-                original.getWidth(),
-                original.getHeight(),
-                BufferedImage.TYPE_INT_RGB);
-
-        Graphics2D g = enhanced.createGraphics();
+    private byte[] generateExcelPreview(File file) throws IOException {
         try {
-            // High-quality rendering
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g.setRenderingHint(RenderingHints.KEY_RENDERING,
-                    RenderingHints.VALUE_RENDER_QUALITY);
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-            // Contrast adjustment
-            RescaleOp rescaleOp = new RescaleOp(1.2f, 15, null);
-            g.drawImage(original, rescaleOp, 0, 0);
-        } finally {
-            g.dispose();
+            // First try with LibreOffice
+            return generateExcelPreviewWithLibreOffice(file);
+        } catch (Exception e) {
+            log.warn("LibreOffice Excel conversion failed, falling back to generic preview", e);
+            try {
+                return generateExcelPreviewWithPoi(file);
+            } catch (Exception ex) {
+                log.error("Both LibreOffice and POI failed for Excel preview", ex);
+                try {
+                    return generateGenericPreview("Excel File", file.getName());
+                } catch (IOException ioex) {
+                    throw new RuntimeException("Failed to generate Excel preview", ioex);
+                }
+            }
         }
-        return enhanced;
+    }
+
+    private byte[] generateExcelPreviewWithLibreOffice(File file) throws Exception {
+        // Similar to Word conversion but for Excel files
+        Path tempDir = Files.createTempDirectory("lo-excel-preview-");
+        try {
+            String sofficePath = getLibreOfficePath();
+            log.info("Attempting Excel conversion with LibreOffice at: {}", sofficePath);
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    sofficePath,
+                    "--headless",
+                    "--convert-to", "png",
+                    "--outdir", tempDir.toString(),
+                    file.getAbsolutePath());
+
+            File logFile = tempDir.resolve("excel_conversion.log").toFile();
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
+
+            Process process = pb.start();
+            boolean success = process.waitFor(libreOfficeTimeout, TimeUnit.MILLISECONDS);
+
+            String logContent = Files.readString(logFile.toPath());
+            log.info("LibreOffice Excel conversion log:\n{}", logContent);
+
+            if (!success) {
+                process.destroyForcibly();
+                throw new IOException("Excel conversion timed out");
+            }
+
+            if (process.exitValue() != 0) {
+                throw new IOException("LibreOffice failed with exit code " +
+                        process.exitValue() + "\nLogs:\n" + logContent);
+            }
+
+            try (Stream<Path> files = Files.list(tempDir)) {
+                Optional<Path> pngFile = files
+                        .filter(p -> p.toString().toLowerCase().endsWith(".png"))
+                        .findFirst();
+
+                if (pngFile.isEmpty()) {
+                    throw new IOException("No PNG file generated for Excel. Logs:\n" + logContent);
+                }
+
+                BufferedImage image = ImageIO.read(pngFile.get().toFile());
+                if (image == null) {
+                    throw new IOException("Generated Excel PNG is invalid");
+                }
+
+                return thumbnailService.convertToByteArray(
+                        thumbnailService.resizeImage(image, 800, 800));
+            }
+        } finally {
+            try {
+                FileUtils.deleteDirectory(tempDir.toFile());
+            } catch (IOException e) {
+                log.warn("Failed to clean temp directory: {}", tempDir, e);
+            }
+        }
+    }
+
+    private byte[] generateExcelPreviewWithPoi(File file) throws IOException {
+        // Create a simple preview showing spreadsheet info
+        BufferedImage image = new BufferedImage(800, 800, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+
+        // White background
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 800, 800);
+
+        // Title
+        g.setColor(Color.BLUE);
+        g.setFont(new Font("Arial", Font.BOLD, 24));
+        g.drawString("Excel Spreadsheet Preview", 50, 50);
+
+        // Basic info
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Arial", Font.PLAIN, 16));
+
+        try (Workbook workbook = WorkbookFactory.create(file)) {
+            int y = 100;
+            g.drawString("File: " + file.getName(), 50, y);
+            y += 30;
+
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                g.drawString("Sheet " + (i + 1) + ": " + sheet.getSheetName(), 50, y);
+                y += 20;
+
+                if (y > 700)
+                    break; // Don't overflow the image
+            }
+        }
+
+        g.dispose();
+        return thumbnailService.convertToByteArray(image);
+    }
+
+    private byte[] generateCsvPreview(File file) throws IOException {
+        // Create a text-based preview of the CSV
+        BufferedImage image = new BufferedImage(800, 800, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+
+        // White background
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 800, 800);
+
+        // Title
+        g.setColor(Color.BLUE);
+        g.setFont(new Font("Arial", Font.BOLD, 24));
+        g.drawString("CSV File Preview", 50, 50);
+
+        // Read first few lines
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Arial", Font.PLAIN, 14));
+
+        int y = 100;
+        int lineCount = 0;
+        int maxLines = 30;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null && lineCount < maxLines) {
+                if (line.length() > 100) {
+                    line = line.substring(0, 100) + "...";
+                }
+                g.drawString(line, 50, y);
+                y += 20;
+                lineCount++;
+
+                if (y > 750)
+                    break;
+            }
+        }
+
+        if (lineCount == maxLines) {
+            g.drawString("... (more content not shown)", 50, y);
+        }
+
+        g.dispose();
+        return thumbnailService.convertToByteArray(image);
+    }
+
+    private byte[] generateXmlPreview(File file) throws IOException {
+        // Create a formatted preview of XML content
+        BufferedImage image = new BufferedImage(800, 800, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+
+        // Dark background for better code viewing
+        g.setColor(new Color(30, 30, 30));
+        g.fillRect(0, 0, 800, 800);
+
+        // Title
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.BOLD, 24));
+        g.drawString("XML File Preview", 50, 50);
+
+        // Read and format XML content
+        g.setFont(new Font("Courier New", Font.PLAIN, 12));
+
+        int y = 100;
+        int lineCount = 0;
+        int maxLines = 30;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null && lineCount < maxLines) {
+                line = line.trim();
+                if (line.isEmpty())
+                    continue;
+
+                // Simple syntax highlighting
+                if (line.startsWith("<")) {
+                    g.setColor(new Color(86, 156, 214)); // Blue for tags
+                } else {
+                    g.setColor(Color.WHITE);
+                }
+
+                if (line.length() > 100) {
+                    line = line.substring(0, 100) + "...";
+                }
+
+                g.drawString(line, 50, y);
+                y += 20;
+                lineCount++;
+
+                if (y > 750)
+                    break;
+            }
+        }
+
+        if (lineCount == maxLines) {
+            g.setColor(Color.LIGHT_GRAY);
+            g.drawString("... (more content not shown)", 50, y);
+        }
+
+        g.dispose();
+        return thumbnailService.convertToByteArray(image);
     }
 
     // Helper: Detect LibreOffice path based on OS
@@ -401,24 +604,4 @@ public class PreviewService {
         return "File";
     }
 
-    // Implement the TextSegment class properly
-    private static class TextSegment {
-        String text;
-        boolean bold;
-        boolean italic;
-
-        TextSegment(String text, boolean bold, boolean italic) {
-            this.text = text;
-            this.bold = bold;
-            this.italic = italic;
-        }
-    }
-
-    // Implement parseFormattedText method
-    private List<TextSegment> parseFormattedText(String text) {
-        List<TextSegment> segments = new ArrayList<>();
-        // Simple implementation - can be enhanced
-        segments.add(new TextSegment(text, false, false));
-        return segments;
-    }
 }
