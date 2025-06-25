@@ -1,5 +1,6 @@
 package com.techpool.file;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
@@ -25,8 +26,6 @@ public class FileStorageService {
 
     @Value("${file.storage-dir}")
     private String storageDir;
-    @Value("${file.preview.cleanup-on-start:false}")
-    private boolean cleanPreviewsOnStart;
 
     @PostConstruct
     public void init() {
@@ -34,25 +33,10 @@ public class FileStorageService {
         this.previewStorageLocation = Paths.get(storageDir, "previews").toAbsolutePath().normalize();
 
         try {
-            // Create directories if they don't exist
             Files.createDirectories(fileStorageLocation);
             Files.createDirectories(previewStorageLocation);
-
-            if (cleanPreviewsOnStart) {
-                // Clean previews directory if it exists
-                if (Files.exists(previewStorageLocation)) {
-                    Files.list(previewStorageLocation)
-                            .forEach(path -> {
-                                try {
-                                    Files.delete(path);
-                                } catch (IOException e) {
-                                    log.warn("Could not delete old preview: {}", path, e);
-                                }
-                            });
-                }
-            }
         } catch (IOException ex) {
-            throw new RuntimeException("Could not initialize storage directories", ex);
+            throw new RuntimeException("Could not initialize storage", ex);
         }
     }
 
@@ -82,14 +66,12 @@ public class FileStorageService {
         try {
             Path filePath = fileStorageLocation.resolve(fileName).normalize();
             Resource resource = new UrlResource(filePath.toUri());
-
-            if (resource.exists()) {
-                return resource;
-            } else {
-                throw new RuntimeException("File not found " + fileName);
+            if (!resource.exists()) {
+                throw new RuntimeException("File not found: " + fileName);
             }
+            return resource;
         } catch (MalformedURLException ex) {
-            throw new RuntimeException("File not found " + fileName, ex);
+            throw new RuntimeException("File not found: " + fileName, ex);
         }
     }
 
@@ -103,4 +85,5 @@ public class FileStorageService {
     public Path getPreviewStorageLocation() {
         return this.previewStorageLocation;
     }
+
 }

@@ -3,6 +3,7 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
+
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
@@ -22,6 +23,7 @@
 		<pdfbox.version>2.0.30</pdfbox.version>
 		<tika.version>2.9.1</tika.version>
 		<commons-io.version>2.15.1</commons-io.version>
+		<zxing.version>3.5.2</zxing.version>
 	</properties>
 
 	<dependencies>
@@ -54,12 +56,6 @@
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>
 			<version>${poi.version}</version>
-			<exclusions>
-				<exclusion>
-					<groupId>commons-io</groupId>
-					<artifactId>commons-io</artifactId>
-				</exclusion>
-			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.pdfbox</groupId>
@@ -71,18 +67,17 @@
 			<artifactId>tika-core</artifactId>
 			<version>${tika.version}</version>
 		</dependency>
-		<!-- ZXing Core -->
+
+		<!-- QR Code -->
 		<dependency>
 			<groupId>com.google.zxing</groupId>
 			<artifactId>core</artifactId>
-			<version>3.5.2</version>
+			<version>${zxing.version}</version>
 		</dependency>
-
-		<!-- ZXing JavaSE (for image generation) -->
 		<dependency>
 			<groupId>com.google.zxing</groupId>
 			<artifactId>javase</artifactId>
-			<version>3.5.2</version>
+			<version>${zxing.version}</version>
 		</dependency>
 
 		<!-- Utilities -->
@@ -91,6 +86,7 @@
 			<artifactId>commons-io</artifactId>
 			<version>${commons-io.version}</version>
 		</dependency>
+
 		<!-- Testing -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -115,5 +111,4 @@
 			</plugin>
 		</plugins>
 	</build>
-
 </project>

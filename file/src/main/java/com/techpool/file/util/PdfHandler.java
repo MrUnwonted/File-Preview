@@ -16,6 +16,7 @@ import com.techpool.file.ThumbnailService;
 
 public class PdfHandler extends BaseFileHandler {
     private static final Logger log = LoggerFactory.getLogger(PdfHandler.class);
+     private static final float PDF_DPI = 100f;
 
     public PdfHandler(ThumbnailService thumbnailService) {
         super(thumbnailService);

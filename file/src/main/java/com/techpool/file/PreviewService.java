@@ -2,8 +2,6 @@ package com.techpool.file;
 
 import java.io.*;
 import java.awt.*;
-import java.awt.Color;
-import java.awt.Font;
 import java.awt.image.BufferedImage;
 
 import javax.imageio.ImageIO;
@@ -22,66 +20,52 @@ import org.apache.tika.Tika;
 @Service
 public class PreviewService {
     private static final Logger log = LoggerFactory.getLogger(PreviewService.class);
-    private final FileStorageService fileStorageService;
+    private final FileStorageService storageService;
     private final FileTypeHandlerFactory handlerFactory;
+    private final Tika tika = new Tika();
 
-
-    public PreviewService(FileStorageService fileStorageService,
-            FileTypeHandlerFactory handlerFactory) {
-        this.fileStorageService = fileStorageService;
+    public PreviewService(FileStorageService storageService, FileTypeHandlerFactory handlerFactory) {
+        this.storageService = storageService;
         this.handlerFactory = handlerFactory;
     }
 
-    public byte[] generatePreview(String storedFileName) {
+    public byte[] generatePreview(String filename) {
         try {
-            Resource fileResource = fileStorageService.loadFileAsResource(storedFileName);
-            File file = fileResource.getFile();
-            String mimeType = detectMimeType(file);
-
+            Resource file = storageService.loadFileAsResource(filename);
+            String mimeType = tika.detect(file.getFile());
             FileTypeHandler handler = handlerFactory.getHandler(mimeType);
-            return handler.generatePreview(file);
-        } catch (Exception e) {
-            try {
-                return generateErrorPreview("Preview generation failed");
-            } catch (IOException ioException) {
-                throw new RuntimeException("Failed to generate error preview", ioException);
+            if (handler.supports(mimeType)) {
+                return handler.generatePreview(file.getFile());
             }
+            return generateErrorPreview("Unsupported file type");
+        } catch (Exception e) {
+            log.error("Preview failed for {}", filename, e);
+            return generateErrorPreview("Preview unavailable");
         }
     }
 
-    public byte[] generateErrorPreview(String message) throws IOException {
-        BufferedImage image = new BufferedImage(800, 800, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = image.createGraphics();
+    public byte[] generateErrorPreview(String message) {
+        try {
+            BufferedImage image = new BufferedImage(800, 800, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = image.createGraphics();
 
-        // White background
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, 800, 800);
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, 800, 800);
+            g.setColor(Color.RED);
+            g.setFont(new Font("Arial", Font.BOLD, 24));
+            g.drawString("Preview Error", 50, 50);
+            g.setColor(Color.BLACK);
+            g.setFont(new Font("Arial", Font.PLAIN, 18));
+            g.drawString(message, 50, 100);
+            g.dispose();
 
-        // Error message
-        g.setColor(Color.RED);
-        g.setFont(new Font("Arial", Font.BOLD, 24));
-        g.drawString("Preview Error", 50, 50);
-        g.setColor(Color.BLACK);
-        g.setFont(new Font("Arial", Font.PLAIN, 18));
-        g.drawString(message, 50, 100);
-
-        g.dispose();
-
-        // You'll need to get thumbnailService from handlerFactory or pass it to this
-        // method
-        // For now, let's use ImageIO to write directly to byte array
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(image, "png", baos);
-        return baos.toByteArray();
-    }
-
-    private String detectMimeType(File file) throws IOException {
-        String mimeType = Files.probeContentType(file.toPath());
-        if (mimeType == null) {
-            Tika tika = new Tika();
-            mimeType = tika.detect(file);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(image, "png", baos);
+            return baos.toByteArray();
+        } catch (IOException e) {
+            log.error("Failed to generate error preview", e);
+            return new byte[0]; // Return empty image as fallback
         }
-        return mimeType;
     }
 
     // private byte[] generatePdfPreview(File file) throws IOException {
