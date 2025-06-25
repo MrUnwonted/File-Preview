@@ -37,18 +37,6 @@ public class FileController {
         return ResponseEntity.ok(new FileUploadResponse(storedFileName));
     }
 
-    // @GetMapping("/health")
-    // public ResponseEntity<String> healthCheck() {
-    // boolean storageOk = Files.exists(fileStorageLocation) &&
-    // Files.isWritable(fileStorageLocation);
-
-    // if (!storageOk) {
-    // return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-    // .body("File storage not available");
-    // }
-    // return ResponseEntity.ok("OK");
-    // }
-
     @GetMapping("/preview/{fileName}")
     public ResponseEntity<byte[]> getPreview(@PathVariable String fileName) {
         try {
