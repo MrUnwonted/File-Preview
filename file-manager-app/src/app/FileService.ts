@@ -15,12 +15,20 @@ export class FileService {
         return this.http.post<{ fileName: string }>(`${this.apiUrl}/upload`, formData);
     }
 
+    // getThumbnailUrl(fileName: string): string {
+    //     const url = `${this.apiUrl}/thumbnail/${fileName}`;
+    //     console.log('Generated thumbnail URL:', url);
+    //     return url;
+    // }
     getPreviewUrl(fileName: string): string {
-        return `${this.apiUrl}/preview/${fileName}`;
+        return `${this.apiUrl}/preview/${encodeURIComponent(fileName)}`;
     }
 
-    getThumbnailUrl(fileName: string): string {
-        return `${this.apiUrl}/thumbnail/${fileName}`;
+    getMultiPagePreview(fileName: string) {
+        return this.http.get(
+            `${this.apiUrl}/multipage-preview/${encodeURIComponent(fileName)}`,
+            { responseType: 'blob' }
+        );
     }
 
     downloadFile(fileName: string): Observable<Blob> {
@@ -29,11 +37,4 @@ export class FileService {
         });
     }
 
-    //     Upload files to /api/files/upload
-
-    // Get previews from /api/files/preview/{filename}
-
-    // Get thumbnails from /api/files/thumbnail/{filename}
-
-    // Download files from /api/files/download/{filename}
 }

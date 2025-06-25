@@ -26,7 +26,7 @@ public class FileTypeHandlerFactory {
         this.handlers = List.of(
             new ImageHandler(thumbnailService),
             new PdfHandler(thumbnailService),
-            new WordHandler(thumbnailService),
+            new WordHandler(thumbnailService, libreOfficePath),
             new ExcelHandler(thumbnailService, libreOfficePath, libreOfficeTimeout),
             new CsvHandler(thumbnailService),
             new XmlHandler(thumbnailService),

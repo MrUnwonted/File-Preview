@@ -29,15 +29,24 @@ public class FileStorageService {
 
     @PostConstruct
     public void init() {
-        this.fileStorageLocation = Paths.get(storageDir, "originals").toAbsolutePath().normalize();
-        this.previewStorageLocation = Paths.get(storageDir, "previews").toAbsolutePath().normalize();
-
         try {
+            // Initialize original files storage
+            this.fileStorageLocation = Paths.get(storageDir, "originals").toAbsolutePath().normalize();
             Files.createDirectories(fileStorageLocation);
+
+            // Initialize previews storage
+            this.previewStorageLocation = Paths.get(storageDir, "previews").toAbsolutePath().normalize();
             Files.createDirectories(previewStorageLocation);
+
+            log.info("File storage initialized at: {}", fileStorageLocation);
+            log.info("Preview storage initialized at: {}", previewStorageLocation);
         } catch (IOException ex) {
-            throw new RuntimeException("Could not initialize storage", ex);
+            throw new RuntimeException("Could not initialize storage directories", ex);
         }
+    }
+
+    public Path getPreviewStorageLocation() {
+        return this.previewStorageLocation;
     }
 
     public String storeFile(MultipartFile file) {
@@ -45,17 +54,16 @@ public class FileStorageService {
             throw new RuntimeException("Failed to store empty file");
         }
 
+        // Normalize file name
         String fileName = StringUtils.cleanPath(file.getOriginalFilename());
         String uniqueFileName = UUID.randomUUID() + "_" + fileName;
 
         try {
-            // Ensure target directory exists
-            if (!Files.exists(fileStorageLocation)) {
-                Files.createDirectories(fileStorageLocation);
-            }
-
+            // Copy file to target location
             Path targetLocation = fileStorageLocation.resolve(uniqueFileName);
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+
+            log.info("File stored successfully: {}", targetLocation);
             return uniqueFileName;
         } catch (IOException ex) {
             throw new RuntimeException("Failed to store file " + fileName, ex);
@@ -66,11 +74,15 @@ public class FileStorageService {
         try {
             Path filePath = fileStorageLocation.resolve(fileName).normalize();
             Resource resource = new UrlResource(filePath.toUri());
-            if (!resource.exists()) {
+
+            if (resource.exists() || resource.isReadable()) {
+                return resource;
+            } else {
+                log.error("File not found or not readable: {}", filePath);
                 throw new RuntimeException("File not found: " + fileName);
             }
-            return resource;
         } catch (MalformedURLException ex) {
+            log.error("File path is invalid: {}", fileName);
             throw new RuntimeException("File not found: " + fileName, ex);
         }
     }
@@ -80,10 +92,6 @@ public class FileStorageService {
         Path targetLocation = previewStorageLocation.resolve(previewFileName);
         Files.write(targetLocation, previewBytes);
         return previewFileName;
-    }
-
-    public Path getPreviewStorageLocation() {
-        return this.previewStorageLocation;
     }
 
 }

@@ -1,3 +1,9 @@
 <h1>File Manager</h1>
-<app-file-upload (fileUploaded)="previewFileName = $event">hi</app-file-upload>
+<!-- <app-file-upload (fileUploaded)="previewFileName = $event">hi</app-file-upload> -->
+<app-file-upload (fileUploaded)="onFileUploaded($event)" (uploadError)="onUploadError()">
+</app-file-upload>
+
+<div *ngIf="previewError" class="error-message">
+    File upload failed. Please try again.
+</div>
 <app-file-preview [fileName]="previewFileName"></app-file-preview>

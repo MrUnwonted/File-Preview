@@ -7,28 +7,23 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 
 @RestController
 @RequestMapping("/api/files")
+@CrossOrigin("http://localhost:4200")
 public class FileController {
     private static final Logger log = LoggerFactory.getLogger(FileController.class);
     private final FileStorageService fileStorageService;
     private final PreviewService previewService;
-    private final ThumbnailService thumbnailService;
 
     public FileController(FileStorageService fileStorageService,
             PreviewService previewService,
             ThumbnailService thumbnailService) {
         this.fileStorageService = fileStorageService;
         this.previewService = previewService;
-        this.thumbnailService = thumbnailService;
     }
 
     @PostMapping("/upload")
@@ -39,26 +34,10 @@ public class FileController {
 
     @GetMapping("/preview/{fileName}")
     public ResponseEntity<byte[]> getPreview(@PathVariable String fileName) {
+        log.info("Generating preview for: {}", fileName); // Add this
         try {
-            // Check if preview exists first
-            Path previewPath = fileStorageService.getPreviewStorageLocation().resolve("preview_" + fileName + ".png");
-            if (Files.exists(previewPath)) {
-                return ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_PNG)
-                        .body(Files.readAllBytes(previewPath));
-            }
-
-            // Generate new preview
-            byte[] preview;
-            try {
-                preview = previewService.generatePreview(fileName);
-            } catch (Exception e) {
-                log.error("Preview generation failed for file: {}", fileName, e);
-                preview = previewService.generateErrorPreview("Preview unavailable");
-            }
-
-            // Store the preview
-            fileStorageService.storePreview(preview, fileName);
+            // Generate new preview if needed
+            byte[] preview = previewService.generatePreview(fileName);
 
             return ResponseEntity.ok()
                     .contentType(MediaType.IMAGE_PNG)
@@ -69,21 +48,16 @@ public class FileController {
         }
     }
 
-    @GetMapping("/thumbnail/{fileName}")
-    public ResponseEntity<byte[]> getThumbnail(@PathVariable String fileName) {
+    // FileController.java
+    @GetMapping("/multipage-preview/{fileName}")
+    public ResponseEntity<byte[]> getMultiPagePreview(@PathVariable String fileName) {
         try {
-            // First check if file exists
-            Resource resource = fileStorageService.loadFileAsResource(fileName);
-            if (!resource.exists()) {
-                return ResponseEntity.notFound().build();
-            }
-
-            byte[] thumbnail = thumbnailService.generateThumbnail(fileName, 200, 200);
+            byte[] preview = previewService.generateMultiPagePreview(fileName);
             return ResponseEntity.ok()
                     .contentType(MediaType.IMAGE_PNG)
-                    .body(thumbnail);
+                    .body(preview);
         } catch (Exception e) {
-            log.error("Thumbnail generation failed for: {}", fileName, e);
+            log.error("Multi-page preview failed for: {}", fileName, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

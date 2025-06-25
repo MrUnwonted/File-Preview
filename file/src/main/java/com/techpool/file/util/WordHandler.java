@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -12,17 +13,21 @@ import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.poi.ss.util.ImageUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.techpool.file.BaseFileHandler;
 import com.techpool.file.ThumbnailService;
 
-public class WordHandler implements FileTypeHandler {
+public class WordHandler extends BaseFileHandler {
     private static final Logger log = LoggerFactory.getLogger(WordHandler.class);
-    private final ThumbnailService thumbnailService;
+    // private final ThumbnailService thumbnailService;
+    private final String libreOfficePath;
 
-    public WordHandler(ThumbnailService thumbnailService) {
-        this.thumbnailService = thumbnailService;
+    public WordHandler(ThumbnailService thumbnailService, String libreOfficePath) {
+        super(thumbnailService);
+        this.libreOfficePath = libreOfficePath;
     }
 
     @Override
@@ -30,13 +35,24 @@ public class WordHandler implements FileTypeHandler {
         return mimeType.contains("word") || mimeType.contains("officedocument.wordprocessingml");
     }
 
+    // @Override
+    // public byte[] generatePreview(File file) throws IOException {
+    // try {
+    // return generateWithLibreOffice(file);
+    // } catch (Exception e) {
+    // // Fallback to POI implementation if needed
+    // throw new IOException("Word preview generation failed", e);
+    // }
+    // }
     @Override
     public byte[] generatePreview(File file) throws IOException {
         try {
-            return generateWithLibreOffice(file);
+            List<BufferedImage> pages = LibreOfficeHelper.convertToImages(file, libreOfficePath);
+            return generateMultiPagePreview(pages, file);
         } catch (Exception e) {
-            // Fallback to POI implementation if needed
-            throw new IOException("Word preview generation failed", e);
+            // Fallback to single page
+            BufferedImage fallback = createEnhancedPreview(null, file);
+            return thumbnailService.convertToByteArray(fallback);
         }
     }
 

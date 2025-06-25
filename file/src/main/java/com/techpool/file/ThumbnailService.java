@@ -18,17 +18,17 @@ public class ThumbnailService {
         this.fileStorageService = fileStorageService;
     }
 
-    public byte[] generateThumbnail(String storedFileName, int width, int height) {
-        try {
-            Resource fileResource = fileStorageService.loadFileAsResource(storedFileName);
-            File file = fileResource.getFile();
-            BufferedImage originalImage = ImageIO.read(file);
-            BufferedImage thumbnail = resizeImage(originalImage, width, height);
-            return convertToByteArray(thumbnail);
-        } catch (Exception e) {
-            throw new RuntimeException("Thumbnail generation failed", e);
-        }
-    }
+    // public byte[] generateThumbnail(String storedFileName, int width, int height) {
+    //     try {
+    //         Resource fileResource = fileStorageService.loadFileAsResource(storedFileName);
+    //         File file = fileResource.getFile();
+    //         BufferedImage originalImage = ImageIO.read(file);
+    //         BufferedImage thumbnail = resizeImage(originalImage, width, height);
+    //         return convertToByteArray(thumbnail);
+    //     } catch (Exception e) {
+    //         throw new RuntimeException("Thumbnail generation failed", e);
+    //     }
+    // }
 
     public BufferedImage resizeImage(BufferedImage image, int maxWidth, int maxHeight) {
         int originalWidth = image.getWidth();

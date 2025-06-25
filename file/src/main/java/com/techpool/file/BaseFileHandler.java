@@ -8,10 +8,12 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
+
+import org.apache.poi.ss.util.ImageUtils;
 
 public abstract class BaseFileHandler implements FileTypeHandler {
     protected static final int QR_WIDTH = 150;
@@ -120,5 +122,32 @@ public abstract class BaseFileHandler implements FileTypeHandler {
             return name;
         return name.substring(0, maxLength / 2) + "..." +
                 name.substring(name.length() - maxLength / 2);
+    }
+
+    protected byte[] generateMultiPagePreview(List<BufferedImage> pages, File file) throws IOException {
+        int width = pages.get(0).getWidth();
+        int totalHeight = pages.stream().mapToInt(img -> img.getHeight()).sum() +
+                (pages.size() * MARGIN) + QR_WIDTH;
+
+        BufferedImage combined = new BufferedImage(width, totalHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = combined.createGraphics();
+
+        // Draw pages vertically
+        int y = 0;
+        for (int i = 0; i < pages.size(); i++) {
+            g.drawImage(pages.get(i), 0, y, null);
+            y += pages.get(i).getHeight() + MARGIN;
+
+            // Page number
+            g.setColor(Color.GRAY);
+            g.drawString("Page " + (i + 1), 20, y - 10);
+        }
+
+        // Add QR code
+        BufferedImage qr = QrCodeUtil.generateQrCode(generateQrContent(file), QR_WIDTH);
+        g.drawImage(qr, (width - QR_WIDTH) / 2, y, null);
+
+        g.dispose();
+        return thumbnailService.convertToByteArray(combined);
     }
 }

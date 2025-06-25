@@ -1,11 +1,15 @@
 package com.techpool.file;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.text.SimpleDateFormat;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
 import javax.imageio.ImageIO;
-import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,8 +17,11 @@ import org.springframework.stereotype.Service;
 
 import com.techpool.file.util.FileTypeHandler;
 import com.techpool.file.util.FileTypeHandlerFactory;
+import com.techpool.file.util.LibreOfficeHelper;
 
 import org.springframework.core.io.Resource;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.tika.Tika;
 
 @Service
@@ -31,16 +38,24 @@ public class PreviewService {
 
     public byte[] generatePreview(String filename) {
         try {
-            Resource file = storageService.loadFileAsResource(filename);
-            String mimeType = tika.detect(file.getFile());
-            FileTypeHandler handler = handlerFactory.getHandler(mimeType);
-            if (handler.supports(mimeType)) {
-                return handler.generatePreview(file.getFile());
+            Resource fileResource = storageService.loadFileAsResource(filename);
+            File file = fileResource.getFile();
+
+            if (!file.exists()) {
+                throw new FileNotFoundException("File not found in storage");
             }
-            return generateErrorPreview("Unsupported file type");
+
+            String mimeType = tika.detect(file);
+            FileTypeHandler handler = handlerFactory.getHandler(mimeType);
+
+            if (handler == null) {
+                throw new IllegalArgumentException("No handler for mimeType: " + mimeType);
+            }
+
+            return handler.generatePreview(file);
         } catch (Exception e) {
             log.error("Preview failed for {}", filename, e);
-            return generateErrorPreview("Preview unavailable");
+            return generateErrorPreview("Preview unavailable: " + e.getMessage());
         }
     }
 
@@ -66,6 +81,90 @@ public class PreviewService {
             log.error("Failed to generate error preview", e);
             return new byte[0]; // Return empty image as fallback
         }
+    }
+
+    public byte[] generateMultiPagePreview(String fileName) {
+        try {
+            Resource fileResource = storageService.loadFileAsResource(fileName);
+            File file = fileResource.getFile();
+            String mimeType = tika.detect(file);
+
+            if (mimeType.contains("pdf")) {
+                return generatePdfMultiPagePreview(file);
+            } else if (mimeType.contains("word") || mimeType.contains("officedocument")) {
+                return generateOfficeMultiPagePreview(file);
+            }
+            return generatePreview(fileName); // Fallback for non-multi-page files
+        } catch (Exception e) {
+            log.error("Multi-page preview failed for {}", fileName, e);
+            return generateErrorPreview("Preview generation failed");
+        }
+    }
+
+    private byte[] generatePdfMultiPagePreview(File file) throws IOException {
+        try (PDDocument document = PDDocument.load(file)) {
+            PDFRenderer renderer = new PDFRenderer(document);
+            List<BufferedImage> pages = new ArrayList<>();
+
+            // Render all pages
+            for (int i = 0; i < document.getNumberOfPages(); i++) {
+                pages.add(renderer.renderImage(i, 1.0f)); // 1.0 = 100 DPI
+            }
+            return combinePages(pages, file);
+        }
+    }
+
+    private byte[] generateOfficeMultiPagePreview(File file) throws Exception {
+        List<BufferedImage> pages = LibreOfficeHelper.convertToImages(file, getLibreOfficePath());
+        return combinePages(pages, file);
+    }
+
+    private byte[] combinePages(List<BufferedImage> pages, File file) throws IOException {
+        if (pages.isEmpty())
+            return generateErrorPreview("No pages found");
+
+        int width = pages.get(0).getWidth();
+        int spacing = 20;
+        int totalHeight = pages.stream().mapToInt(img -> img.getHeight()).sum() +
+                (pages.size() * spacing);
+
+        BufferedImage combined = new BufferedImage(width, totalHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = combined.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, totalHeight);
+
+        // Draw all pages with spacing
+        int y = 0;
+        for (int i = 0; i < pages.size(); i++) {
+            BufferedImage page = pages.get(i);
+            g.drawImage(page, 0, y, null);
+            y += page.getHeight() + spacing;
+
+            // Add page number
+            g.setColor(Color.GRAY);
+            g.drawString("Page " + (i + 1), 20, y - 10);
+        }
+        g.dispose();
+
+        // Convert to byte array
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(combined, "png", baos);
+        return baos.toByteArray();
+    }
+
+    // private String generateQrContent(File file) throws IOException {
+    // SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    // return String.format(
+    // "File: %s\nSize: %d KB\nType: %s\nUploaded: %s",
+    // file.getName(),
+    // file.length() / 1024,
+    // Files.probeContentType(file.toPath()),
+    // sdf.format(new Date()));
+    // }
+
+    private String getLibreOfficePath() {
+        // Configure this from your application properties
+        return "C:\\LibreOfficePortable\\App\\LibreOffice\\program\\soffice.exe";
     }
 
     // private byte[] generatePdfPreview(File file) throws IOException {
