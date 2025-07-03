@@ -1,16 +1,15 @@
 package com.techpool.file;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.text.SimpleDateFormat;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
 import javax.imageio.ImageIO;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
+import org.apache.pdfbox.Loader; // Add this import
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,7 +19,7 @@ import com.techpool.file.util.FileTypeHandlerFactory;
 import com.techpool.file.util.LibreOfficeHelper;
 
 import org.springframework.core.io.Resource;
-import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.tika.Tika;
 
@@ -61,26 +60,52 @@ public class PreviewService {
 
     public byte[] generateErrorPreview(String message) {
         try {
-            BufferedImage image = new BufferedImage(800, 800, BufferedImage.TYPE_INT_RGB);
+            BufferedImage image = new BufferedImage(600, 200, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = image.createGraphics();
 
+            // White background
             g.setColor(Color.WHITE);
-            g.fillRect(0, 0, 800, 800);
+            g.fillRect(0, 0, 600, 200);
+
+            // Red error border
             g.setColor(Color.RED);
-            g.setFont(new Font("Arial", Font.BOLD, 24));
-            g.drawString("Preview Error", 50, 50);
+            g.setStroke(new BasicStroke(5));
+            g.drawRect(10, 10, 580, 180);
+
+            // Error text
             g.setColor(Color.BLACK);
-            g.setFont(new Font("Arial", Font.PLAIN, 18));
-            g.drawString(message, 50, 100);
+            g.setFont(new Font("Arial", Font.BOLD, 16));
+
+            // Word wrap for long messages
+            FontMetrics fm = g.getFontMetrics();
+            int lineHeight = fm.getHeight();
+            int y = 50;
+
+            for (String line : message.split("\n")) {
+                for (String part : splitStringEvery(line, 60)) {
+                    g.drawString(part, 30, y);
+                    y += lineHeight;
+                }
+            }
+
             g.dispose();
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(image, "png", baos);
             return baos.toByteArray();
-        } catch (IOException e) {
-            log.error("Failed to generate error preview", e);
-            return new byte[0]; // Return empty image as fallback
+        } catch (Exception e) {
+            log.error("Critical error during error preview generation", e);
+            return new byte[0];
         }
+    }
+
+    private List<String> splitStringEvery(String s, int interval) {
+        List<String> result = new ArrayList<>();
+        int length = s.length();
+        for (int i = 0; i < length; i += interval) {
+            result.add(s.substring(i, Math.min(length, i + interval)));
+        }
+        return result;
     }
 
     public byte[] generateMultiPagePreview(String fileName) {
@@ -102,16 +127,40 @@ public class PreviewService {
     }
 
     private byte[] generatePdfMultiPagePreview(File file) throws IOException {
-        try (PDDocument document = PDDocument.load(file)) {
+        try (PDDocument document = Loader.loadPDF(file)) {
             PDFRenderer renderer = new PDFRenderer(document);
+            int pageCount = document.getNumberOfPages();
+
+            // Configurable number of pages to render (default: 3)
+            int pagesToRender = Math.min(pageCount, getMaxPreviewPages());
+
             List<BufferedImage> pages = new ArrayList<>();
 
-            // Render all pages
-            for (int i = 0; i < document.getNumberOfPages(); i++) {
+            // Render configured number of pages
+            for (int i = 0; i < pagesToRender; i++) {
                 pages.add(renderer.renderImage(i, 1.0f)); // 1.0 = 100 DPI
             }
+
             return combinePages(pages, file);
         }
+    }
+
+    // Get max pages from configuration
+    private int getMaxPreviewPages() {
+        // Read from application.properties or use default
+        return 3; // Or get from @Value("${preview.max-pages:3}")
+    }
+
+    public byte[] validateImage(byte[] imageData) throws IOException {
+        // Check basic PNG signature
+        if (imageData.length < 8 ||
+                !(imageData[0] == (byte) 0x89 &&
+                        imageData[1] == 'P' &&
+                        imageData[2] == 'N' &&
+                        imageData[3] == 'G')) {
+            throw new IOException("Invalid PNG image data");
+        }
+        return imageData;
     }
 
     private byte[] generateOfficeMultiPagePreview(File file) throws Exception {
@@ -120,33 +169,48 @@ public class PreviewService {
     }
 
     private byte[] combinePages(List<BufferedImage> pages, File file) throws IOException {
-        if (pages.isEmpty())
+        if (pages.isEmpty()) {
             return generateErrorPreview("No pages found");
+        }
 
-        int width = pages.get(0).getWidth();
+        // Calculate dimensions
+        int width = pages.stream()
+                .mapToInt(BufferedImage::getWidth)
+                .max()
+                .orElse(800);
         int spacing = 20;
-        int totalHeight = pages.stream().mapToInt(img -> img.getHeight()).sum() +
-                (pages.size() * spacing);
+        int totalHeight = pages.stream()
+                .mapToInt(img -> img.getHeight())
+                .sum() + (pages.size() * spacing);
 
+        // Create combined image
         BufferedImage combined = new BufferedImage(width, totalHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = combined.createGraphics();
+
+        // White background
         g.setColor(Color.WHITE);
         g.fillRect(0, 0, width, totalHeight);
 
-        // Draw all pages with spacing
+        // Draw pages with page numbers
         int y = 0;
         for (int i = 0; i < pages.size(); i++) {
             BufferedImage page = pages.get(i);
-            g.drawImage(page, 0, y, null);
-            y += page.getHeight() + spacing;
+
+            // Center each page horizontally
+            int x = (width - page.getWidth()) / 2;
+            g.drawImage(page, x, y, null);
 
             // Add page number
-            g.setColor(Color.GRAY);
-            g.drawString("Page " + (i + 1), 20, y - 10);
+            g.setColor(new Color(0, 0, 0, 150)); // Semi-transparent black
+            g.fillRect(x, y + page.getHeight() - 30, 50, 20);
+            g.setColor(Color.WHITE);
+            g.drawString("Page " + (i + 1), x + 5, y + page.getHeight() - 15);
+
+            y += page.getHeight() + spacing;
         }
         g.dispose();
 
-        // Convert to byte array
+        // Convert to PNG
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(combined, "png", baos);
         return baos.toByteArray();

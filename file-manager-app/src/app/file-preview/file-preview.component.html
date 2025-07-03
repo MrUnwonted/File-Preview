@@ -14,6 +14,13 @@
   <div class="preview-wrapper" [class.loading]="isLoading"
     [style.max-height.px]="showFullPreview ? previewHeight : 200">
 
+    <!-- PDF-specific fallback -->
+    <div *ngIf="errorOccurred && isMultiPage" class="pdf-fallback">
+      <p>PDF preview unavailable</p>
+      <button (click)="download()">Download PDF</button>
+    </div>
+
+    <!-- Regular image preview -->
     <img *ngIf="!isLoading && previewUrl && !errorOccurred" [src]="previewUrl" class="preview-image"
       [class.thumbnail]="!showFullPreview" [class.full-preview]="showFullPreview" (error)="handleImageError()"
       (load)="handleImageLoad()">
@@ -23,16 +30,28 @@
       <p>Generating preview...</p>
     </div>
 
-    <div *ngIf="errorOccurred" class="error-message">
+    <div *ngIf="errorOccurred && !isMultiPage" class="error-message">
       Preview unavailable
     </div>
   </div>
 
+  <div *ngIf="showFullPreview && isMultiPage && !errorOccurred" class="page-controls">
+    <button (click)="changePage(-1)" [disabled]="currentPage === 1 || isLoading">
+      Previous
+    </button>
+    <span>Page {{currentPage}} of {{totalPages}}</span>
+    <button (click)="changePage(1)" [disabled]="currentPage === totalPages || isLoading">
+      Next
+    </button>
+  </div>
+
   <div class="preview-actions">
-    <!-- Change "Show TurnEmail" to proper binding -->
-    <button (click)="togglePreview()">
+    <button (click)="togglePreview()" [disabled]="errorOccurred">
       {{ showFullPreview ? 'Show Thumbnail' : 'Show Full Preview' }}
     </button>
-    <button (click)="download()">Download</button>
+    <div *ngIf="errorOccurred" class="error-message">
+      <p>⚠️ Preview not available for this file type.</p>
+      <button (click)="download()">Download Original File</button>
+    </div>
   </div>
 </div>

@@ -7,6 +7,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
+
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -48,16 +53,38 @@ public class FileController {
         }
     }
 
-    // FileController.java
     @GetMapping("/multipage-preview/{fileName}")
     public ResponseEntity<byte[]> getMultiPagePreview(@PathVariable String fileName) {
         try {
             byte[] preview = previewService.generateMultiPagePreview(fileName);
+            preview = previewService.validateImage(preview); // Add validation
+
             return ResponseEntity.ok()
                     .contentType(MediaType.IMAGE_PNG)
+                    .header("X-Preview-Validated", "true")
                     .body(preview);
         } catch (Exception e) {
             log.error("Multi-page preview failed for: {}", fileName, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(("Preview generation failed: " + e.getMessage()).getBytes());
+        }
+    }
+
+    @GetMapping("/page-count/{fileName}")
+    public ResponseEntity<Integer> getPdfPageCount(@PathVariable String fileName) {
+        try {
+            Resource fileResource = fileStorageService.loadFileAsResource(fileName);
+            File file = fileResource.getFile();
+
+            if (file.getName().toLowerCase().endsWith(".pdf")) {
+                try (PDDocument document = Loader.loadPDF(file)) {
+                    return ResponseEntity.ok(document.getNumberOfPages());
+                }
+            }
+            return ResponseEntity.ok(1); // Non-PDF files are considered single-page
+        } catch (Exception e) {
+            log.error("Failed to get page count", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

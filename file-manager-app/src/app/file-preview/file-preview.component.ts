@@ -17,6 +17,10 @@ export class FilePreviewComponent implements OnChanges {
   isMultiPage = false;
   previewHeight = 0;
   errorOccurred = false;
+  currentPage = 1;
+  totalPages = 1;
+  private loadedPageCount = false;
+
 
   constructor(private fileService: FileService) { }
 
@@ -64,32 +68,72 @@ export class FilePreviewComponent implements OnChanges {
 
   loadFullPreview() {
     this.resetPreview();
-    if (this.isMultiPage) {
-      this.fileService.getMultiPagePreview(this.fileName).subscribe({
-        next: (blob) => {
-          this.createImageFromBlob(blob);
+
+    // First get page count if we haven't already
+    if (this.totalPages === 1 && this.isMultiPage) {
+      this.fileService.getPdfPageCount(this.fileName).subscribe({
+        next: (count) => {
+          this.totalPages = count;
+          this.loadPagePreview();
         },
-        error: (err) => {
-          console.error('Error loading multi-page preview:', err);
-          this.loadRegularPreview();
-        }
+        error: (err) => this.handleImageError()
       });
     } else {
-      this.loadRegularPreview();
+      this.loadPagePreview();
     }
   }
 
-  loadRegularPreview() {
+  private loadPagePreview() {
+    this.fileService.getMultiPagePreview(this.fileName, this.currentPage).subscribe({
+      next: (blob) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const result = e.target?.result as string;
+          if (result.startsWith('data:image/')) {
+            this.previewUrl = result;
+            this.isLoading = false;
+          } else {
+            this.handleImageError();
+          }
+        };
+        reader.readAsDataURL(blob);
+      },
+      error: (err) => this.handleImageError()
+    });
+  }
+
+  changePage(delta: number) {
+    const newPage = this.currentPage + delta;
+    if (newPage >= 1 && newPage <= this.totalPages) {
+      this.currentPage = newPage;
+      this.loadPagePreview();
+    }
+  }
+
+
+  // Add this to handle PDF previews better
+  private loadRegularPreview() {
     this.resetPreview();
     this.previewUrl = this.fileService.getPreviewUrl(this.fileName);
-    // Calculate height after load
-    const img = new Image();
-    img.onload = () => {
-      this.handleImageLoad();
-      this.previewHeight = img.height;
+
+    // Add cache busting to prevent browser caching issues
+    this.previewUrl += `?t=${new Date().getTime()}`;
+
+    // Test if the URL returns an image
+    const testImage = new Image();
+    testImage.onload = () => {
+      if (testImage.width > 0 && testImage.height > 0) {
+        this.handleImageLoad();
+      } else {
+        this.handleImageError(); // Not a valid image
+      }
     };
-    img.onerror = () => this.handleImageError();
-    img.src = this.previewUrl;
+    testImage.onerror = () => {
+      console.error('Preview load failed, trying fallback...');
+      this.handleImageError();
+      // Optional: Try a different preview method here
+    };
+    testImage.src = this.previewUrl;
   }
 
   handleImageError() {
@@ -103,8 +147,12 @@ export class FilePreviewComponent implements OnChanges {
   }
 
   handleImageLoad() {
-    this.isLoading = false;
-    this.errorOccurred = false;
+    const img = new Image();
+    img.onload = () => {
+      this.previewHeight = img.height;
+      this.isLoading = false;
+    };
+    img.src = this.previewUrl;
   }
 
   createImageFromBlob(blob: Blob) {

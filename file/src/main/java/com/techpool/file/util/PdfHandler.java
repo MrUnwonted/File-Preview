@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
@@ -28,7 +29,7 @@ public class PdfHandler extends BaseFileHandler {
     public byte[] generatePreview(File file) throws IOException {
         log.info("Generating PDF preview for: {}", file.getAbsolutePath());
 
-        try (PDDocument document = PDDocument.load(file)) {
+        try (PDDocument document = Loader.loadPDF(file)) {
             if (document.getNumberOfPages() == 0) {
                 throw new IOException("PDF contains no pages");
             }
